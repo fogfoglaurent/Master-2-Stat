@@ -1,0 +1,3 @@
+
+R advanced: https://adv-r.hadley.nz/s3.html
+Work on cdv: http://bconnelly.net/working-with-csvs-on-the-command-line/
