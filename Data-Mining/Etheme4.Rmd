@@ -1,0 +1,256 @@
+---
+title: "TP4 - Simulation, échantillonnage, bootstrap, validation croisée avec R"
+author: "Thomas Laurent"
+date: "21/02/2018"
+output: pdf_document
+---
+
+#Simulation de lois 
+
+
+##Bernouilli
+
+On réalise 100 tirages.
+
+```{r}
+n=100
+x=sample(c(-1,1), n, replace=T)
+plot(x, type='h', main="Variable de Bernoulli")
+```
+
+```{r}
+set.seed(123)
+n=100
+x=sample(c(-1,1), n, replace=T)
+plot(x, type='h', main="Variable de Bernoulli")
+```
+
+On fixe la semence pour pouvoir reproduire la séquence ultérieurement.
+
+```{r}
+set.seed(123)
+n=100
+x=sample(c(-1,1), n, replace=T, prob=c(.2,.8)) 
+plot(x, type='h',main="Bernoulli, cas général")
+```
+
+##Binomiale
+
+```{r}
+#Tirage d'un echantillon de taille 1000 suivant une loi binomiale
+x=rbinom(1000,10,0.5)
+#Tracage de l'histogramme
+hist(x,xlim=c(min(x),max(x)), probability=T, col='blue',nclass=max(x)-min(x))
+#Estimation non parametrique
+lines(density(x), col='red', lwd=2)
+```
+
+##Loi de Poisson
+
+```{r}
+x=rpois(1000,1)
+hist(x,xlim=c(min(x),max(x)), probability=T, col='blue',nclass=max(x)-min(x))
+x=rpois(1000,20)
+hist(x,xlim=c(min(x),max(x)), probability=T, col='blue',nclass=max(x)-min(x))
+```
+
+##Loi uniforme, de Cauchy
+
+```{r}
+#Loi uniforme
+round(runif(10), digits=3)
+x=runif(1000)
+hist(x, probability=T, col='blue')
+lines(density(x), col='red', lwd=2)
+
+#Loi de cauchy
+x=rcauchy(1000)
+hist(x, probability=T, col='blue')
+lines(density(x), col='red', lwd=2)
+```
+
+##Autres lois
+
+```{r}
+#Loi exponentielle
+x=rexp(1000)
+hist(x, probability=T, col='blue')
+lines(density(x), col='red', lwd=2)
+#Loi normale
+x=rnorm(1000)
+hist(x, probability=T, col='blue')
+lines(density(x), col='red', lwd=2)
+#Loi beta(2,2)
+x=rbeta(1000,shape1=2,shape2=2)
+hist(x, probability=T, col='blue')
+lines(density(x), col='red', lwd=2)
+```
+
+##Loi théoriques
+
+```{r}
+curve(dchisq(x,1), xlim=c(0,10), ylim=c(0,.6), col='red', lwd=3)
+curve(dchisq(x,2), add=T, col='green', lwd=3)
+curve(dchisq(x,3), add=T, col='blue', lwd=3)
+curve(dchisq(x,5), add=T, col='orange', lwd=3)
+abline(h=0,lty=3)
+abline(v=0,lty=3)
+```
+
+##Loi des grands nombres
+
+```{r}
+#Loi uniforme
+mean(runif(10))
+mean(runif(1000))
+
+#Loi de cauchy
+mean(rcauchy(10))
+mean(rcauchy(1000))
+mean(rcauchy(100000))
+```
+
+Pour la loi uniforme, la convergence est rapide puisque l'estimation varie peu pour n=1000. En revanche, les valeurs varient très fortement pour l'échantillon selon une loi de cauchy même avec une taille d'échantillon importante.
+
+##Limite centrale et loi gaussienne
+
+```{r}
+#Echantillon de la somme de 12 variables aleatoires uniformes sur [0,1]
+x=rep(0,1000)
+for (i in 1 :1000) x[i]=sum(runif(12))
+hist(x, col='blue', probability=T)
+lines(density(x), col='red', lwd=2)
+curve(dnorm(x,mean=6,sd=1), add=T, col='green', lwd=2)
+```
+
+Plus la variance $\sigma^2$ de la variable aléatoire est petite, plus la vitesse de convergence sera grande.
+
+#Echantillonage
+
+##Tirage aléatoire simple
+```{r}
+#Selection des echantillon d'apprentissage et de validation
+set.seed(123)
+npop=1000
+testi<-sample(1 :npop,200)
+appri<-setdiff(1 :npop,testi)
+```
+
+##Avec remise ou bootstrap
+
+```{r}
+#Tirage sans remise
+sample(1 :20,20)
+#Bootstrap
+sample(1 :20, 20, replace=TRUE)
+```
+
+On vérifie bien que l'échantillon bootstrap est avec remise car on obtient des valeurs identiques de la séquence.
+
+##Régression simple
+
+```{r}
+suit=read.table("/Users/thomaslaurent/Documents/Cours-M2/Data-Mining2/Etheme4/suitincom.dat.txt")
+names(suit)=c("revenu","nbappt")
+#Nuage de points
+plot(suit$nbappt,suit$revenu)
+#Iteeration du tirage de l'echantillon bootstrap et des estimations
+for (i in 1 :100) {
+  suit.b=suit[sample(47,47,replace=TRUE),]
+  reg=lm(revenu~nbappt,data=suit.b)
+  abline(reg)}
+```
+
+On estime ensuite sur le modèle linéaire log-log.
+```{r}
+#On reitere le procede pour le modele log-log
+lsuit=data.frame(log(suit$nbappt),log(suit$revenu))
+names(lsuit)=c("Lrevenu","Lnbappt")
+plot(lsuit$Lnbappt,lsuit$Lrevenu)
+for (i in 1 :100) {
+  suit.b=lsuit[sample(47,47,replace=TRUE),]
+  reg=lm(Lrevenu~Lnbappt,data=suit.b)
+  abline(reg)}
+```
+
+La région de confiance est plus étroite que pour le modèle précédent.
+
+On réalise ensuite une régression non-paramétrique.
+
+```{r}
+plot(lsuit$Lnbappt,lsuit$Lrevenu) >for (i in 1 :100) {
+  suit.b=lsuit[sample(47,47,replace=TRUE),]
+  lsuit.spl=smooth.spline(suit.b$Lnbappt,suit.b$Lrevenu,df=4)
+  lines(lsuit.spl, col = "blue")}
+```
+
+##Régression linéaire multiple
+
+```{r}
+#Estimation du modele lineaire avec 5 variables
+ukcomp1=read.table("/Users/thomaslaurent/Documents/Cours-M2/Data-Mining2/Etheme4/ukcomp1.datr.txt",header=TRUE)
+stock=data.frame(matrix(0,100,5))
+names(stock)=c("CST","CFTDT","LOGSALE","NFATAST","CURRAT")
+for (i in 1 :100) {
+Ib=sample(40,40,replace=TRUE)
+stock[i,]=coef(lm(RETCAP~WCFTDT+LOGSALE+NFATAST+CURRAT,data=ukcomp1[Ib,]))}
+boxplot(stock,horizontal=TRUE)
+
+#Estimation du modele lineaire avec 9 variables
+stock=data.frame(matrix(0,100,9))
+names(stock)=c("CST","WCFTDT","LOGSALE","LOGASST","NFATAST","FATTOT","INVTAST","QUIKRAT","CURRAT")
+for (i in 1 :100) {
+Ib=sample(40,40,replace=TRUE)
+stock[i,]=coef(lm(RETCAP~WCFTDT+LOGSALE+LOGASST+NFATAST+FATTOT+INVTAST+QUIKRAT+CURRAT,data=ukcomp1[Ib,]))}
+boxplot(stock,horizontal=TRUE)
+```
+
+On observe que les dispersions sont plus importantes pour le modèle optimal au sens du R2 ajusté.
+
+##Librairie spécifique
+
+```{r}
+library(boot)
+#Fonction pour effectuer un bootstrap sur le modele
+uk1.fun=function(d,i) coef(lm(RETCAP~WCFTDT+LOGSALE+NFATAST+CURRAT,data=d[i,]))
+uk1.b=boot(ukcomp1,uk1.fun,R=999)
+uk1.b
+boxplot(data.frame(uk1.b$t),horizontal=TRUE)
+#Autre modele
+uk2.fun=function(d,i) coef(lm(RETCAP~WCFTDT+LOGSALE+LOGASST+NFATAST+FATTOT+INVTAST+QUIKRAT+CURRAT,data=d[i,]))
+uk2.b=boot(ukcomp1,uk2.fun,R=999)
+uk2.b
+boxplot(data.frame(uk2.b$t),horizontal=TRUE)
+```
+
+#Validation croisée
+
+##Application du modèle linéaire
+
+```{r}
+#Estimation du modele
+uk1.glm = glm(RETCAP~WCFTDT+LOGSALE+NFATAST+CURRAT,family=gaussian,data=ukcomp1)
+#Estimation de l’erreur leave-one-out
+cv.err = cv.glm(ukcomp1,uk1.glm)
+#Estimation sur 5 echantillons de taille 8
+cv.err.5 = cv.glm(ukcomp1,uk1.glm, K=5)
+cv.err$delta[1]
+cv.err.5$delta[1]
+
+#Autre modele
+uk1.glm = glm(RETCAP~WCFTDT+LOGSALE+LOGASST+NFATAST+FATTOT+INVTAST+QUIKRAT+CURRAT,family=gaussian,data=ukcomp1)
+cv.err = cv.glm(ukcomp1,uk1.glm)
+cv.err.5 = cv.glm(ukcomp1,uk1.glm, K=5)
+cv.err$delta[1]
+cv.err.5$delta[1]
+```
+
+L'erreur estimée étant plus faible pour le premier modèle et le nombre de paramètres étant moins important pour celui-ci, ce modèle parait meilleur.
+
+```{r}
+muhat=uk1.glm$fitted
+uk1.diag= glm.diag(uk1.glm)
+mean((uk1.glm$y-muhat)^2/(1-uk1.diag$h)^2)
+```
+
+On vérifie que l'erreur du modèle leave-one-out est égale à celle obtenue avec la fonction cv.glm.

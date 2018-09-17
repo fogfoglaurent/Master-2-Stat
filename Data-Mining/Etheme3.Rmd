@@ -1,0 +1,149 @@
+---
+title: "TP3 - Arbres de décision"
+author: "Thomas Laurent"
+date: "11/02/2018"
+output: pdf_document
+---
+
+#Donnéees du syndrome de Cushing
+
+On construit l'arbre de décision puis on procède à un élagage de l'arbre sur la base des valeurs de xerror et xstd.
+```{r}
+###Chargement des donnees###
+rm(list = ls(all = TRUE))
+op=par(cex=0.5)
+
+library(rpart)
+library(MASS)
+#Cushings data
+data(Cushings)
+cush <- Cushings[Cushings$Type!="u",]
+cush$Type<-factor(cush$Type)
+cush[,1:2] <- log(cush[,1:2])
+```
+
+```{r}
+###Arbre de decision###
+cush.trer<-rpart(Type~Tetrahydrocortisone+Pregnanetriol,cush,
+cp=-Inf,control = rpart.control(minsplit=2,xval=10),method="class")
+par(cex=0.5)
+plot(cush.trer)
+text(cush.trer)
+
+cush.cpt<-printcp(cush.trer)
+
+cush.pt<-prune(cush.trer,cp=0.07)
+par(cex=0.5)
+plot(cush.pt)
+text(cush.pt)
+
+```
+
+#Exercice (question 1)
+
+$p(c|x)$ est déterminé par la proportion de chaque classe dans la feuille considérée.
+A la feuille Tetrahydrocortisone>= 1.575727, Pregnanetriol>= 0.6931472, le taux d'observations dans la classe c est égal à 5/6, ce qui correspond aux résultats obtenus avec la fonction predict.
+
+
+```{r}
+#Probabilites de classement pour tetrahydrocortisone=1.6 et pregnanetriol=0.7
+cush.pt
+summary(cush.pt)
+predict(cush.pt,data.frame(Tetrahydrocortisone=1.6,Pregnanetriol=0.7))
+
+```
+#Exercice (question 2)
+
+Pour la validation croisée, les erreurs moyennes sont calculées en faisant une moyenne géométrique à une valeur du coefficient de pénalisation fixée.
+
+```{r}
+par(xaxt="n")
+par(cex=0.5)
+plot(1:nrow(cush.cpt),cush.cpt[,3],type='l',xlab="CP",ylab="error,xerror")
+par(xaxt="s")
+points(1:nrow(cush.cpt),cush.cpt[,4],type='b')
+axis(1, at = 1:nrow(cush.cpt), labels = formatC(cush.cpt[,1], format="fg"))
+axis(3, at = 1:nrow(cush.cpt), labels = formatC(cush.cpt[,2]+1, format="fg"))
+```
+
+On trace ensuite les frontières pour l'arbre complet et l'arbre élagué.
+
+```{r,fig.height=3,fig.width=3}
+m<-100
+x<-seq(0,4,length.out=m)
+y<-seq(-3,2.5,length.out=m)
+z<-data.frame(expand.grid(Tetrahydrocortisone=x,Pregnanetriol=y))
+
+#Frontiere pour l'arbre complet
+par(cex=0.5)
+plot(cush[,1:2],pch=as.character(cush$Type))
+cush.trerb<-predict(cush.trer,z)
+contour(x,y,matrix(max.col(cush.trerb),m,m),levels=c(1.5,2.5),
+add=T,d=F,lty=1,col=2)
+
+#Frontiere pour l'arbre elague
+par(cex=0.5)
+plot(cush[,1:2],pch=as.character(cush$Type))
+cush.ptb<-predict(cush.pt,z)
+contour(x,y,matrix(max.col(cush.ptb),m,m),levels=c(1.5,2.5),
+add=T,d=F,lty=1,col=3)
+```
+
+```{r}
+#Construction de l'arbre en utilisant le gain d'information
+cush.tre<-rpart(Type~Tetrahydrocortisone+Pregnanetriol,cush,
+cp=-Inf,control = rpart.control(minsplit=2,xval=10),
+method="class",parms = list(split="information"))
+par(cex=0.5)
+plot(cush.tre)
+text(cush.tre)
+printcp(cush.tre)
+
+```
+
+On remarque qu'avec le critère d'entropie, on obtient les mêmes résultats.
+
+#Jeux de données Verres Forensic
+
+```{r}
+#Import des données
+data(fgl)
+names(fgl)[10]<-"Type"
+set.seed(123)
+fgl.trer<-rpart(Type~.,fgl,
+cp=-Inf,control = rpart.control(minsplit=2,xval=10),method="class")
+```
+
+On trace l'arbre complet.
+```{r,fig.height=4}
+#Affichage de l'arbre
+par(cex=0.5)
+plot(fgl.trer)
+text(fgl.trer)
+fgl.xv<-printcp(fgl.trer)
+```
+
+En traçant les graphes des éboulis en fonction de CP, on choisit le découpage pour CP=0.27 (8 feuilles) car l'erreur moyenne est à un écart type du minimum de xerror.
+```{r}
+#Realisation du graphe des éboulis des coefficients CP
+par(xaxt="n")
+par(cex=0.5)
+plot(1:nrow(fgl.xv),fgl.xv[,3],type='l',xlab="CP",ylab="error,xerror")
+par(xaxt="s")
+points(1:nrow(fgl.xv),fgl.xv[,4],type='b')
+axis(1, at = 1:nrow(fgl.xv), labels = formatC(fgl.xv[,1], format="fg"))
+axis(3, at = 1:nrow(fgl.xv), labels = formatC(fgl.xv[,2]+1, format="fg"))
+
+par(cex=0.5)
+plotcp(fgl.trer)
+```
+
+```{r}
+fgl.pt<-prune(fgl.trer,cp=0.027)
+par(cex=0.5)
+plot(fgl.pt)
+text(fgl.pt)
+table(fgl$Type,predict(fgl.pt,type="class"))
+```
+
+On regarde ensuite le taux de bien classés est supérieur à 75\% ce qui semble convenable.

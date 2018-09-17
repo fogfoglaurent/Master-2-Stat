@@ -1,0 +1,186 @@
+---
+title: "Etheme6-Reseau de neurones"
+author: "Thomas Laurent"
+date: "08/03/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Reseaux de neurones
+
+```{r}
+#Estimation
+setwd("/Users/thomaslaurent/Documents/Cours-M2/Data-Mining2/Etheme6")
+
+library(MASS)
+library(nnet)
+visappt<-read.table("visappt.dat.txt", header = T, sep = " ") # a remplacer par votre
+var=names(visappt)
+varquant=var[1:30]
+varqual=var[31:54]
+
+visapptq=visappt[,c("CARVP", varqual)]
+vistest<-read.table("vistest.dat.txt", header = T, sep = " ") 
+vistestq=vistest[,c("CARVP", varqual)]
+vis.nnet<-nnet(CARVP~.,data=visapptq,size=3) 
+summary(vis.nnet)
+```
+
+```{r}
+#Determination des parametre
+CVnn=function(formula, data, size, niter = 1, nplis = 10, decay = 0, maxit = 100)
+     {
+     n = nrow(data)
+     tmc <- 0
+     un <- rep(1, n)
+     ri <- sample(nplis, n, replace = T)
+     cat(" k= ")
+     for(i in sort(unique(ri))) {
+     cat(" ", i, sep = "")
+     for(rep in 1:niter) {
+     learn <- nnet(formula, data[ri != i, ], size = size,
+     trace = F, decay = decay, maxit = maxit)
+     tmc = tmc + sum(un[(data$CARVP[ri == i] == "Coui") !=
+     (predict(learn, data[ri == i, ]) > 0.5)])
+     }
+     }
+     cat("\n", "Taux de mal classes")
+     tmc/(niter * length(unique(ri)) * n)
+}
+
+CVnn(CARVP~.,data=visapptq,size=2, decay=0)
+CVnn(CARVP~.,data=visapptq,size=2, decay=1)
+CVnn(CARVP~.,data=visapptq,size=2, decay=2)
+CVnn(CARVP~.,data=visapptq,size=3, decay=0)
+CVnn(CARVP~.,data=visapptq,size=3, decay=1)
+CVnn(CARVP~.,data=visapptq,size=3, decay=2)
+CVnn(CARVP~.,data=visapptq,size=4, decay=0)
+CVnn(CARVP~.,data=visapptq,size=4, decay=1)
+CVnn(CARVP~.,data=visapptq,size=4, decay=2)
+```
+
+```{r}
+#Test
+vis.nnet<-nnet(CARVP~.,data=visapptq,size=3,decay=1)
+pred.vistest<-predict(vis.nnet,vistestq)>0.5
+prop.table(table(pred.vistest,vistest$CARVP=="Coui"))
+```
+
+#SVM
+
+```{r}
+library(MASS)
+data(cats)
+help(cats)
+summary(cats)
+```
+
+```{r}
+#Distribution
+attach(cats)
+library(lattice)
+
+histogram(~Bwt | Sex)
+histogram(~Hwt | Sex)
+```
+
+```{r}
+#Correlation
+cor(Bwt,Hwt)
+```
+
+Les deux variables sont bien correlees.
+
+```{r}
+col<-c("RED","BLUE")
+ plot(Bwt,Hwt,col=col[Sex])
+```
+
+Il est difficile de trouver une frontiere separant les deux classes avec ce jeu de donnees.
+
+```{r}
+#Echantillon test et d'apprentissage
+index<-1:nrow(cats)
+ testindex<-sample(index, trunc(length(index)/3))
+ testset<-cats[testindex,]
+ trainset<-cats[-testindex,]
+```
+
+```{r}
+#SVM
+library(e1071)
+ svm.linear<-svm(Sex~., data = trainset, probability=TRUE, cross=10, kernel="linear")
+plot(svm.linear, trainset)
+```
+
+```{r}
+#Test
+svmlinear.preds<-predict(svm.linear, testset[,-1], probability=TRUE)
+mpred=as.vector(svmlinear.preds[])
+prop.table(table(testset$Sex,mpred))
+```
+
+```{r}
+#Matrice de confusion
+confmat.linear <- table(pred = svmlinear.preds,
+   true = testset[,1])
+
+confmat.linear
+```
+
+```{r}
+#SVM noyau polynomial
+svm.pol<-svm(Sex~., data = trainset, probability=TRUE, cross=10, kernel="polynomial")
+plot(svm.pol, trainset)
+svmpol.preds<-predict(svm.pol, testset[,-1], probability=TRUE)
+confmat.pol <- table(pred = svmpol.preds, true = testset[,1])
+
+prop.table(confmat.pol)
+```
+
+```{r}
+library("ROCR")
+
+svmlinear.rocr<-prediction(attr(svmlinear.preds,"probabilities")[,2],
+   testset[,1] == "M")
+   svmlinear.perf<-performance(svmlinear.rocr, measure = "tpr", x.measure = "fpr")
+   svmpol.rocr<-prediction(attr(svmpol.preds,"probabilities")[,2],
+   testset[,1] == "M")
+   svmpol.perf<-performance(svmpol.rocr, measure = "tpr", x.measure = "fpr")
+   plot(svmlinear.perf,col="BLUE")
+   plot(svmpol.perf,add=TRUE,col="RED")
+```
+
+```{r}
+#AUC
+ svmlinear.auc<-as.numeric(performance(svmlinear.rocr, measure = "auc", x.measure
+   = "cutoff")@ y.values)
+   svmpol.auc<-as.numeric(performance(svmpol.rocr, measure = "auc", x.measure
+   = "cutoff")@ y.values)
+
+svmlinear.auc
+svmpol.auc
+```
+
+Les valeurs de l'AUC sont relativement comparable entre les deux modeles.
+
+```{r}
+#Test de McNemar
+dummy1<-as.data.frame(predict(svm.linear, testset[,-1]),optional=TRUE)
+dummy2<-as.data.frame(predict(svm.pol, testset[,-1]),optional=TRUE)
+   
+correct.linear<-(dummy1[,] == testset[,1])
+correct.pol<-(dummy2[,] == testset[,1])
+
+n00<-sum(!correct.linear & !correct.pol)
+n10<-sum(!correct.linear & correct.pol)
+n01<-sum(correct.linear & !correct.pol)
+n11<-sum(correct.linear & correct.pol)
+
+mcnemar.test(matrix(c(n00,n10,n01,n11),nrow=2))
+```
+
+On ne rejette pas l'hypothese que les deux classifieurs ont le meme taux d'erreurs.
