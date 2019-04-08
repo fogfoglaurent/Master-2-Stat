@@ -1,0 +1,334 @@
+---
+title: "Séries temporelles appliquées - Dossier 3"
+author: "Thomas Laurent"
+date: "12 Novembre 2017"
+output:
+  pdf_document:
+    keep_tex: yes
+  html_document: default
+header-includes:
+- \usepackage[T1]{fontenc}
+- \usepackage{amsmath}
+---
+
+```{r setup, include=FALSE,echo=FALSE}
+knitr::opts_chunk$set(echo=T, eval=T, message = F, warning=F, cache = F, fig=TRUE)
+
+setwd("/Users/thomaslaurent/Documents/Cours-M2/Series temporelles/Dossier 3")
+
+options(scipen=999)
+```
+
+```{r,echo=FALSE}
+##Packages
+#Package import
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(stringr)
+library(zoo)
+library(magrittr)
+library(knitr)
+library(tseries)
+library(caschrono)
+library(forecast)
+library(urca)
+```
+
+#Import des données
+
+```{r}
+##Import des donnees##
+cout_data=as.vector(scan("cout_construction.txt"))
+
+```
+
+#Exploration de la série coût
+```{r}
+##Conversion en series temporelles##
+cout=ts(cout_data,start=c(1954,4),frequency=4)
+
+#Tracage du chronogramme pour la serie cout
+autoplot(as.zoo(cout), geom = "line") + scale_x_yearqtr()+
+  ylab("Coût")+
+  xlab("Année-Trimestre")+
+  ggtitle("Chronogramme de la série coût")+
+  geom_hline(yintercept = mean(cout),color="red")
+
+```
+
+On remarque que la moyenne semble dépendre du temps et qu'a fortiori la série n'est pas stationnaire. Ensuite, on restreint la série aux données à partir du premier trimestre 1980.
+
+```{r}
+#Restriction de la serie à partir du premier trimestre 1980
+cout80=window(cout,start=c(1980,1))
+
+#Tracage du chronogramme pour la serie cout
+autoplot(as.zoo(cout80), geom = "line") + scale_x_yearqtr()+
+  ylab("Coût")+
+  xlab("Année-Trimestre")+
+  ggtitle("Chronogramme de la série")+
+  geom_hline(yintercept = mean(cout80),color="red")
+```
+De même, la moyenne semble être croissante en fonction du temps. Ainsi, on conclut que la série cout80 n'est pas stationnaire.
+
+#Exploration de la série des accroissements de coût80
+Ensuite, on s'intéresse à la série des accroissements.
+
+```{r}
+#Calcul de la série des accroissements
+lag_cout=lag(as.vector(cout))
+merged=cbind(cout=as.vector(cout),lag_cout) %>% 
+  as.data.frame() %>% 
+  mutate(accroiss=cout-lag_cout)
+
+cout_accroiss=ts(merged$accroiss,start=c(1954,4),frequency=4) %>% 
+  window(.,start=c(1980,1))
+
+#Tracage du chronogramme pour la serie cout
+autoplot(as.zoo(cout_accroiss), geom = "line") + scale_x_yearqtr()+
+  ylab("Coût")+
+  xlab("Année-Trimestre")+
+  ggtitle("Chronogramme de la série des accroissements de coût80")+
+  geom_hline(yintercept = mean(cout_accroiss),color="red")
+```
+
+La série oscille autour de la moyenne globale et on observe des oscillations maximales de l'ordre de 40 sur la période à partir du premier trimestre 1980.
+
+#Exploration de la série des accroissements de lcoût80
+
+```{r}
+#Calcul de lcout80, serie cout80 log transformee
+lcout80=log(cout80)
+
+#Tracage du chronogramme pour la serie lcout80
+autoplot(as.zoo(lcout80), geom = "line") + scale_x_yearqtr()+
+  ylab("Coût")+
+  xlab("Année-Trimestre")+
+  ggtitle("Chronogramme de la série")+
+  geom_hline(yintercept = mean(lcout80),color="red")
+
+#Calcul de la serie des accroissements pour lcout80
+lag_lcout=lag(as.vector(log(cout)))
+merged=cbind(cout=as.vector(log(cout)),lag_lcout) %>% 
+  as.data.frame() %>% 
+  mutate(accroiss=cout-lag_lcout)
+
+lcout80_accroiss=ts(merged$accroiss,start=c(1954,4),frequency=4) %>% 
+  window(.,start=c(1980,1))
+
+#Tracage du chronogramme pour la serie lcout80_accroiss
+autoplot(as.zoo(lcout80_accroiss), geom = "line") + scale_x_yearqtr()+
+  ylab("Coût")+
+  xlab("Année-Trimestre")+
+  ggtitle("Chronogramme de la série")+
+  geom_hline(yintercept = mean(lcout80_accroiss),color="red")+
+  scale_y_continuous(limits=c(-0.075,0.075))
+
+#ACF et PACF - Serie lcout80_accroiss
+acf_ser1=acf2y(y=lcout80_accroiss)
+```
+
+La série décrit des oscillations autour de la moyenne globale qui est très proche de zéro. Cependant en début de période (juste après le premier trimestre de l'année 1980), l'accroissement du log du cout oscille légèrement au-dessus de la moyenne. D'après la forme de l'ACF (décroissance exponentielle de l'ACF), on peut penser que cette série est stationnaire. Pour tester la stationnarité de la série, on effectue un test ADF. Sachant que la série ne montre pas de tendance a priori et que l'on ne sait pas si la moyenne globale est nulle, on choisit de tester la stationarité en prenant en compte une moyenne non nulle. 
+
+```{r}
+###Test ADF###
+lc.df1=ur.df(y=lcout80_accroiss,lags=5,type="drift")
+lc.df1@teststat%>% 
+  kable(.,caption="Test ADF (moyenne nulle) pour la série des
+        accroissements lcoût80 (tau)")
+
+lc.df1@cval%>% 
+  kable(.,caption="Test ADF (moyenne nulle) pour la série des
+        accroissements lcoût80 (valeurs seuil)")
+
+lc.df2=ur.df(y=lcout80_accroiss,lags=5,type="none")
+lc.df2@teststat%>% 
+  kable(.,caption="Test ADF (moyenne nulle) pour la série des
+        accroissements lcoût80 (tau)")
+
+lc.df2@cval%>% 
+  kable(.,caption="Test ADF (moyenne nulle) pour la série des
+        accroissements lcoût80 (valeurs seuil)")
+
+```
+
+Le test (jusqu'au retard 5) donne une valeur de test de tau inférieure à 1\% et l'hypothèse nulle (statistique tau) est rejetée. On conclut que la série est stationnaire. De plus, la p-valeur du test de phi étant comprise entre 1\% et 5\%, on rejette l'hypothèse nulle $(\beta_1,\pi)=(0,0)$. On ne peut pas conclure directement sur $\beta_1$. Cependant, d'après le chronogramme, la série oscille autour de zéro. Le test de tau pour une moyenne nulle donne une valeur très négative du test ce qui nous conduit à considérer que la série est stationnaire. Ce résultat est en accord avec le test ADF précédemment effectué. Cela suggère que la moyenne de la série est probablement nulle.
+
+
+#Ajustement de lcout80
+
+```{r,fig.height=9,fig.width=9,fig.align="center"}
+#Residu de la serie
+temps=seq_along(lcout80_accroiss)
+reglin_1=lm(lcout80_accroiss~temps)
+resi.mco_1=residuals(reglin_1)
+
+
+#ACF et PACF-Serie 1
+acf_ser1=acf2y(y=lcout80_accroiss)
+
+
+
+#Methode MINIC
+armaselect(lcout80_accroiss) %>% 
+  kable(.,caption="Methode MINIC pour la sélection du modèle ARMA")
+```
+
+On remarque que l'ACF est décroissante de manière exponentielle et qu'elle converge rapidement vers zéro. Cela confirme l'hypothèse de stationnarité. D'autre part, la PACF est à la limite dans l'intervalle à 95\% autour de zéro à partir du retard 3. On choisit de retenir un modèle AR(2) bien que la méthode MINIC aboutit à favoriser un AR(1).
+
+```{r,fig.height=9,fig.width=9,fig.align="center"}
+#Ajustement d'un AR(2)
+ajust_ser=arima(lcout80_accroiss,order=c(2,0,0),include.mean = TRUE)
+tsdiag(ajust_ser)
+title("AR(2)",outer=TRUE)
+```
+
+```{r}
+Box.test.2(residuals(ajust_ser),nlag=c(5,10,15),type="Ljung-Box",decim=4) %>% 
+  kable(.,caption="Test de LJung-Box (Série des accroissements de lcout80)")
+```
+
+Les p-valeurs et les graphiques étant bien supérieures à 5\%, on ne rejette pas l'hypothèse de blancheur des résidus. On considère cet ajustement (AR(2)) par la suite.
+
+```{r,fig.height=5,fig.width=4,fig.align="center"}
+##Test de la normalite##
+
+#Jarque-Bera
+test_JB=jarque.bera.test(residuals(ajust_ser))$p.value
+
+#Shapiro-Wilk
+test_shapiro=shapiro.test(residuals(ajust_ser))$p.value
+
+#Resultat des tests
+cbind(test_JB,test_shapiro) %>% 
+  set_colnames(.,c("Jarque-Bera","Shapiro-Wilk")) %>% 
+  kable(.,caption="Test de normalité",row.names=NA)
+
+#QQplot
+
+qqplot.data <- function (vec)
+{
+  y <- quantile(vec[!is.na(vec)], c(0.25, 0.75))
+  x <- qnorm(c(0.25, 0.75))
+  slope <- diff(y)/diff(x)
+  int <- y[1L] - slope * x[1L]
+  d <- data.frame(resids = vec)
+  ggplot(d, aes(sample = resids)) + stat_qq() + geom_abline(slope = slope, intercept = int)+
+    ggtitle("q-q plot")+
+    xlab("Théorique")+
+    ylab("Série")
+}
+
+qqplot.data(residuals(ajust_ser))
+```
+
+Les tests de Shapiro-Wilk et de Jarque-Bera ne rejettent pas l'hypothèse de normalité (p-valeur inférieure à 5\%). Cette hypothèse est appuyée par la distribution visualisée avec le Q-Q plot. Etant donné que la série lcout80 correspond à la série cout80 après transformation logarithmique, on peut penser que la série cout80 suit une distribution log-normale.
+
+#Ajustement de la série lcout80
+
+La série des accroissements de lcout80 étant stationnaire, on en déduit que la série lcout80 a une racine unité. On a ajusté un AR(2) pour cette série d'accroissements. On choisit donc d'ajuster un ARIMA(2,1,0).
+
+```{r,fig.height=10,fig.width=9,fig.align="center"}
+#Ajustement d'un ARIMA(2,1,0) pour la serie lcout80
+ajust_ser=arima(lcout80,order=c(2,1,0))
+
+tsdiag(ajust_ser)
+title("ARIMA(2,1,0)",outer=TRUE)
+```
+
+```{r}
+Box.test.2(residuals(ajust_ser),nlag=c(1,10,15),type="Ljung-Box",decim=4) %>% 
+  kable(.,caption="Test de LJung-Box (Série des accroissements de lcout80)")
+
+##Test de la normalite##
+
+#Jarque-Bera
+test_JB=jarque.bera.test(residuals(ajust_ser))$p.value
+
+#Shapiro-Wilk
+test_shapiro=shapiro.test(residuals(ajust_ser))$p.value
+
+#Resultat des tests
+cbind(test_JB,test_shapiro) %>% 
+  set_colnames(.,c("Jarque-Bera","Shapiro-Wilk")) %>% 
+  kable(.,caption="Test de normalité",row.names=NA)
+```
+
+L'ACF est très proche à partir du retard 1. D'après les graphes, certaines p-valeurs du test de Ljung-box sont dans la zone inférieure à 5\%. On réalise un test de Ljung-box afin de conclure. Les tests pour les différents retards indiquent des valeurs supérieures à 5\%. Ainsi, on ne rejette pas la blancheur des résidus. Ensuite, d'après les deux tests de normalité réalisés (Jarque-Bera et Shapiro-Wilk), l'hypothèse de normalité des résidus n'est pas rejetée. On conclut que la série des résidus est un bruit blanc gaussien.
+
+#Prévision de la série lcout80 à 1 an
+
+On décide de réaliser la prévision à un an de cette série.
+
+```{r}
+###Prevision a 1 an###
+
+#Calcul des intervalles de confiance pour les valeurs ajustees
+upper_ajust=fitted(ajust_ser)+qnorm(0.95)*sqrt(ajust_ser$sigma2)
+lower_ajust=fitted(ajust_ser)-qnorm(0.95)*sqrt(ajust_ser$sigma2)
+
+#Prediction des valeurs a l'horizon 1 an
+for_1=forecast(ajust_ser,h=4)
+fit_pred=data.frame(temps=seq(1980,2007,0.25),y_fit=c(for_1$fitted,
+                                                      as.vector(for_1[["mean"]])),
+                    lower=c(lower_ajust,as.vector(for_1[["lower"]][,1])),
+                    upper=c(upper_ajust,as.vector(for_1[["upper"]][,1])),
+                    type=c(rep(0,105),rep(1,4)))
+
+data_raw=lcout80[1:105] %>% 
+  as.data.frame() %>% 
+  rownames_to_column(.,var="temps") %>% 
+  set_colnames(.,c("temps","yobs")) %>% 
+  mutate(temps=as.numeric(seq(1980,2006,0.25)))
+
+
+p=ggplot(data=data_raw,aes(x=temps))+
+  geom_line(aes(y=yobs),col='red')+
+  scale_x_yearqtr()+
+  geom_line(data=fit_pred,aes(x=temps,y=y_fit,colour=type))+
+  geom_ribbon(data=fit_pred,aes(x=temps,ymin=lower,ymax=upper,color=type),
+              alpha=.3,colour=NA,fill="grey50")+
+  ggtitle("Estimations et prédictions des valeurs de lcout80 à 1 an")+
+  theme(legend.position = "none",
+        panel.background = element_rect(fill = "grey98", colour = NA),
+        panel.border = element_blank(), 
+        panel.grid.major = element_line(colour = "white"))+
+  ylab(label="coût")+
+  xlab(label="Trimestre")
+
+print(p)
+```
+
+On visualise qu'une croissance du log du coût de construction sur l'année 2006. Cependant, on s'intéresse à la prévision du coût plutôt qu'au log du coût. Ainsi, on prédit les valeurs des coûts en utilisant l'antilog dans la fonction forecast.
+
+#Prévision de la série lcout80 à 1 an
+
+```{r}
+###Prevision a 1 an de cout80###
+
+#Prediction des valeurs a l'horizon 1 an
+for_1=forecast(ajust_ser,h=4,lambda=0)
+fit_pred=data.frame(temps=seq(2006.25,2007,0.25),y_fit=c(as.vector(for_1[["mean"]])),
+                    lower=c(as.vector(for_1[["lower"]][,2])),
+                    upper=c(as.vector(for_1[["upper"]][,2])),
+                    observe=c(1362,1366,1381,1406))
+
+p=ggplot(data=fit_pred,aes(x=temps))+
+  scale_x_yearqtr()+
+  geom_line(aes(y=observe),col='red')+
+  geom_line(aes(y=y_fit))+
+  geom_ribbon(aes(ymin=lower,ymax=upper,color=type),
+              alpha=.3,colour=NA,fill="grey50")+
+  ggtitle("Estimations et prédictions des valeurs de cout80 à 1 an")+
+  theme(legend.position = "none",
+        panel.background = element_rect(fill = "grey98", colour = NA),
+        panel.border = element_blank(), 
+        panel.grid.major = element_line(colour = "white"))+
+  ylab(label="coût")+
+  xlab(label="Trimestre")
+
+print(p)
+```
+
+Les valeurs des coûts de construction observés sur la période 2006 (courbe en rouge) sont plus élevées que les prédictions (courbe en noir). Ainsi, les prédictions selon ce modèle sous-estiment les valeurs des coûts à 1 an.

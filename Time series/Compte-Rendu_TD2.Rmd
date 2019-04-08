@@ -1,0 +1,271 @@
+---
+title: "Séries temporelles appliquées - Dossier 2"
+author: "Thomas Laurent"
+date: "29 Octobre 2017"
+output:
+  pdf_document:
+    keep_tex: yes
+  html_document: default
+header-includes:
+- \usepackage[T1]{fontenc}
+- \usepackage{amsmath}
+---
+
+```{r setup, include=FALSE,echo=FALSE}
+knitr::opts_chunk$set(echo=T, eval=T, message = F, warning=F, cache = F, fig=TRUE)
+
+setwd("/Users/thomaslaurent/Documents/Cours-M2/Series temporelles/Dossier 2")
+
+options(scipen=999)
+```
+
+```{r,echo=FALSE}
+##Packages
+#Package import
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(stringr)
+library(zoo)
+library(magrittr)
+library(knitr)
+library(tseries)
+library(caschrono)
+library(forecast)
+```
+
+```{r}
+##Import des donnees##
+donnees_1=as.vector(read_delim("y1.txt",delim="\t")$x[1:120])
+donnees_2=as.vector(read_delim("y2.txt",delim="\t")$x[1:120])
+donnees_3=as.vector(read_delim("y3.txt",delim="\t")$x[1:120])
+```
+
+```{r}
+##Conversion en series temporelles##
+serie_1=ts(donnees_1,start=c(1,1),frequency=1)
+serie_2=ts(donnees_2,start=c(1,1),frequency=1)
+serie_3=ts(donnees_3,start=c(1,1),frequency=1)
+```
+
+#Question 3
+
+Les séries temporelles sont constituées chacune de 120 observations (observations journalières) contenant seulement une variable.
+
+```{r,fig.align="center",fig.height=3,fig.width=3}
+#Statistiques descriptives
+serie_1_df=as.data.frame(serie_1)
+serie_2_df=as.data.frame(serie_2)
+serie_3_df=as.data.frame(serie_3)
+
+#Distribution - histogramme
+ggplot(serie_1_df,aes(x=serie_1))+
+  geom_histogram()+
+  ggtitle("Distribution de la série 1")+
+  scale_x_continuous()
+
+ggplot(serie_2_df,aes(x=serie_2))+
+  geom_histogram()+
+  ggtitle("Distribution de la série 2")+
+  scale_x_continuous()
+
+ggplot(serie_3_df,aes(x=serie_3))+
+  geom_histogram()+
+  ggtitle("Distribution de la série 3")+
+  xlab(label="x")+
+  ylab(label="y")+
+  scale_x_continuous()
+```
+
+On remarque que les distributions des valeurs des différentes séries semble plutôt symétriques.
+
+```{r}
+##Chronogramme des series##
+
+#Fonction pour tracer les chronogrammes
+chrono=function(serie,serienum){
+autoplot(as.zoo(serie), geom = "line") + scale_x_yearmon()+
+  ylab("X")+
+  xlab("Jour")+
+  scale_y_continuous(label=scales::comma)+
+  ggtitle(paste0("Chronogramme de la série",serienum))+
+  geom_hline(yintercept = mean(eval(parse(text=paste0(deparse(substitute(serie)),
+                                                      "_df$x")))),color="red")
+}
+
+chrono(serie_1,"1")
+chrono(serie_2,"2")
+chrono(serie_3,"3")
+```
+
+```{r}
+##Test de la normalite de chaque serie##
+test_1=jarque.bera.test(serie_1)$p.value
+test_2=jarque.bera.test(serie_2)$p.value
+test_3=jarque.bera.test(serie_3)$p.value
+test_res=cbind(test_1,test_2,test_3)
+
+test_res=test_res %>% as_data_frame() %>% 
+  set_colnames(.,c("y1","y2","y3")) %>% 
+  rownames_to_column(.,var="Variable")
+test_res[1,1]="X"
+test_res %>% 
+  kable(.,caption="Test de normalité (Jarque-Bera) pour chaque série (P-valeur)")
+
+```
+
+Le test ne rejette pas l'hypothèse de normalité à un seuil de 5\% pour toutes les séries. Cela est en accord avec les distributions observées ci-dessus.
+
+La série y1 décrit des oscillations plutôt régulières autour d'une valeur qui semble constante. Ainsi cette série semble stationnaire. En revanche, pour la série y2, les fluctuations semblent moins importante et ces fluctuations semblent osciller autour d'une valeur plus faible en fin de série comparé en début de série que la moyenne. Cela suggère donc une éventuelle non stationnarité de la série. Enfin les oscillations pour la série y3 sont importantes et le niveau moyen semblant être stable, on peut penser que la série est stationnaire.
+
+#Question 4
+
+```{r,fig.align="center",fig.height=4,fig.width=4}
+##ACF##
+
+acf(serie_1,xlabs="retard",main=NULL)
+acf(serie_2,xlabs="retard",main=NULL)
+acf(serie_3,xlabs="retard",main=NULL)
+```
+
+Pour chaque série, on observe que les autocorrélations ne sont pas toutes incluses dans l'intervalle à 95\% autour de 0. Ainsi, tous les coefficients d'autocorrélations ne semblent pas être nuls. Ainsi, on rejette l'hypothèse que ces séries sont des bruits blancs. De plus, pour la série y3, on remarque que les valeurs des coefficients peuvent être positifs ou négatives sur plusieurs périodes consécutives. Cependant, les valeurs étant incluses dans l'intervalle à 95\% autour de 0, cette série ne semble pas saisonnière.
+
+#Question 5
+
+On restreint la série aux 113 premières observations.
+
+```{r}
+###Restriction aux 113 premieres observations###
+serie_1=ts(donnees_1[1:113],start=c(1,1),frequency=1)
+serie_2=ts(donnees_2[1:113],start=c(1,1),frequency=1)
+serie_3=ts(donnees_3[1:113],start=c(1,1),frequency=1)
+
+###Regression linaire
+
+#Serie y1
+temps=seq_along(serie_1)
+reglin_1=lm(serie_1~temps)
+resi.mco_1=residuals(reglin_1)
+
+#Serie y2
+temps=seq_along(serie_2)
+reglin_2=lm(serie_2~temps)
+resi.mco_2=residuals(reglin_2)
+
+#Serie y3
+temps=seq_along(serie_3)
+reglin_3=lm(serie_3~temps)
+resi.mco_3=residuals(reglin_3)
+
+
+#ACF et PACF-Serie 1
+acf_ser1=acf2y(resi.mco_1)
+
+#ACF et PACF-Serie 2
+acf_ser2=acf2y(resi.mco_2)
+
+#ACF et PACF-Serie 3
+acf_ser3=acf2y(resi.mco_3)
+
+```
+
+L'ACF et la PACF pour la série 1 est incluse dans l'intervalle à 95 \% autour de zéro pour les périodes au-delà de 2. On choisit d'ajuster un AR(2) pour cette série. Pour la série 2, la PACF est incluse dans l'intervalle à 95\% autour de zéro au-delà de t=2.  Pour cette série, on observe une décroissance exponentielle de l'ACF remarquable. Pour cette série, on choisit également d'ajuster un AR(2). Concernant la série 3, la PACF et l'ACF décroit rapidement puisque les valeurs sont incluses dans l'intervalle autour de zéro à partir de t=2 pour l'ACF et au-delà de 5 pour la PACF. Pour cette série, on procède à un ajustement d'un AR(5).
+
+#Question 6
+```{r,fig.height=9,fig.width=9,fig.align="center"}
+###Ajustement des series###
+
+##Serie 1
+op=par(oma=c(1.5,1.5,1.5,1.5),mar=c(1.5,1.5,1.5,1.5))
+ajust_ser1=arima(serie_1,order=c(2,0,0))
+tsdiag(ajust_ser1)
+title("Série 1",outer=TRUE)
+
+##Serie 2
+ajust_ser2=arima(serie_2,order=c(2,0,0))
+tsdiag(ajust_ser2)
+title("Série 2",outer=TRUE)
+
+##Serie 3
+ajust_ser3=arima(serie_3,order=c(5,0,0))
+tsdiag(ajust_ser3)
+title("Série 3",outer=TRUE)
+par(op)
+```
+
+Les ACFs des résidus des modèles de chaque série montrent que les coefficients de corrélations sont inclus dans l'intervalle autour de zéro à partir de t=1. De plus, les tests de Ljung-box ne sont pas significatifs à 5\% d'après les graphiques et les résultats des tests (fenêtres: 5, 10 et 20). On ne rejette donc pas l'hypothèse que les résidus sont des bruits blancs.
+
+```{r}
+###Test de Ljung-Box###
+Box.test.2(residuals(ajust_ser1),nlag=c(5,10,20),type="Ljung-Box",decim=4) %>% 
+  kable(.,caption="Test de LJung-Box (Série 1)")
+
+Box.test.2(residuals(ajust_ser2),nlag=c(5,10,20),type="Ljung-Box",decim=4) %>% 
+  kable(.,caption="Test de LJung-Box (Série 2)")
+
+Box.test.2(residuals(ajust_ser3),nlag=c(5,10,20),type="Ljung-Box",decim=4) %>% 
+  kable(.,caption="Test de LJung-Box (Série 3)")
+```
+
+
+Ensuite, on vérifie la significativité des paramètres des modèles.
+
+```{r}
+###Significativite des parametres des modeles###
+t_stat(ajust_ser1) %>% 
+  kable(.,caption="Significativité des paramètres (Série 1)")
+
+t_stat(ajust_ser2) %>% 
+  kable(.,caption="Significativité des paramètres (Série 2)")
+
+t_stat(ajust_ser3) %>% 
+  kable(.,caption="Significativité des paramètres (Série 3)")
+```
+
+Tous les coefficients des trois modèles sont fortement significatifs à un seuil de 5\%.
+
+#Question 7
+```{r}
+###Prevision###
+
+##Fonction pour tracer les valeurs observees et predites
+
+pred_disp=function(data,model,title){
+
+#Calcul des intervalles de confiance pour les valeurs ajustees
+upper_ajust=fitted(model)+qnorm(0.90)*sqrt(model$sigma2)
+lower_ajust=fitted(model)-qnorm(0.90)*sqrt(model$sigma2)
+
+#Prediction des valeurs a l'horizon 7
+for_1=forecast(model,h=7)
+fit_pred=data.frame(x=1:120,y_fit=c(for_1$fitted,as.vector(for_1[["mean"]])),
+                       lower=c(lower_ajust,as.vector(for_1[["lower"]][,1])),
+                       upper=c(upper_ajust,as.vector(for_1[["upper"]][,1])),
+                    type=c(rep(0,113),rep(1,7)))
+
+data_raw=data[1:120] %>% 
+  as.data.frame() %>% 
+  rownames_to_column(.,var="temps") %>% 
+  set_colnames(.,c("temps","yobs")) %>% 
+  mutate(temps=as.numeric(temps))
+
+p=ggplot(data=data_raw,aes(x=temps))+
+  geom_line(aes(y=yobs),col='red')+
+  scale_x_continuous()+
+  geom_line(data=fit_pred,aes(x=x,y=y_fit,colour=type))+
+  geom_ribbon(data=fit_pred,aes(x=x,ymin=lower,ymax=upper,color=type),alpha=.3,colour=NA,fill="grey50")+
+  ggtitle(title)+
+  theme(legend.position = "none",panel.background = element_rect(fill = "grey98", colour = NA),
+  panel.border = element_blank(), 
+  panel.grid.major = element_line(colour = "white"))+
+  ylab(label="y")
+print(p)
+}
+
+pred_disp(donnees_1,ajust_ser1,"Estimations et prédictions des valeurs de y1 (80 % IC)")
+pred_disp(donnees_2,ajust_ser2,"Estimations et prédictions des valeurs de y2 (80 % IC)")
+pred_disp(donnees_3,ajust_ser3,"Estimations et prédictions des valeurs de y3 (80 % IC)")
+
+```
+
+Globalement, on remarque que les valeurs ajustées (en bleu foncé) sont assez proches de valeurs observées (en rouge) pour les trois séries. On peut vérifier que les intervalles des valeurs prédites (valeurs prédites indiquées en bleu clair) à l'horizon 7 sont bien plus larges que pour les valeurs ajustées. Dans les séries 1 et 2, les intervalles de confiance des valeurs prédites englobent les valeurs observées tandis que certaines valeurs observées ne sont pas comprises dans l'intervalle de confiance des valeurs prédites pour la série 3. Ainsi, les prédictions pour les deux premières séries semblent relativement bonnes. Pour la troisième série, la qualité des prédictions est bien moins bonne.

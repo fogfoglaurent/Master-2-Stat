@@ -1,0 +1,319 @@
+---
+title: "Séries temporelles appliquées - Dossier 4"
+author: "Thomas Laurent"
+date: "26 Novembre 2017"
+output:
+  pdf_document:
+    keep_tex: yes
+  html_document: default
+header-includes:
+- \usepackage[T1]{fontenc}
+- \usepackage{amsmath}
+---
+
+```{r setup, include=FALSE,echo=FALSE}
+knitr::opts_chunk$set(echo=T, eval=T, message = F, warning=F, cache = F, fig=TRUE)
+
+setwd("/Users/thomaslaurent/Documents/Cours-M2/Series temporelles/Dossier 4")
+
+options(scipen=999)
+```
+
+```{r,echo=FALSE}
+##Packages
+#Package import
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(stringr)
+library(zoo)
+library(magrittr)
+library(knitr)
+library(tseries)
+library(caschrono)
+library(forecast)
+library(urca)
+library(astsa)
+library(gridExtra)
+```
+
+#Question 1
+
+```{r}
+##Import des donnees##
+mar_data=as.data.frame(matrix(scan("market.txt"),ncol=4,byrow = TRUE))
+names(mar_data)=c("dv","mar","prix","rang")
+
+```
+
+#Question 2 à 5
+```{r}
+##Conversion en series temporelles##
+mar=ts(mar_data$mar,start=c(1,1),frequency=1)
+
+#Tracage du chronogramme pour la serie
+autoplot(as.zoo(mar), geom = "line") +
+  ylab("Part de marché")+
+  xlab("Jour")+
+  ggtitle("Chronogramme de la série mar")+
+  geom_hline(yintercept = mean(mar),color="red")
+
+```
+
+On remarque que la moyenne de la série ne semble pas constante. Pour s'assurer de la non-stationnarité de la série, on va procéder à un test de non stationnarité (AFD). Vu la forme du chronogramme, nous allons nous intéresser au test avec un modèle avec tendance.
+
+
+```{r}
+###Test ADF###
+lc.df1=ur.df(y=mar,lags=5,type="trend")
+lc.df1@teststat%>% 
+  kable(.,caption="Test ADF avec une tendance")
+
+
+lc.df1@cval%>% 
+  kable(.,caption="Test ADF avec une tendance")
+```
+
+La statistique du test de Fisher ne rejette pas l'hypothèse H0. On conclut que la série n'est pas stationnaire. De plus, vu la statistique Phi, on conclut que cette série semble présenter une dérive.
+
+#Question 5 à 7
+
+```{r,fig.align="center",fig.height=3,fig.width=4}
+##Chronogramme des residus
+
+#Regression sur le temps
+temps=seq(1,length(mar_data$mar))
+reglin_1=lm(mar_data$mar~temps)
+
+#Extraction des residus
+res=residuals(reglin_1)
+
+res_serie=ts(res,start=c(1,1),frequency=1)
+
+#Tracage du chronogramme pour la serie
+autoplot(as.zoo(res_serie), geom = "line") +
+  ylab("Résidus de la serie mar")+
+  xlab("Jour")+
+  ggtitle("Chronogramme des résidus de la série mar")+
+  geom_hline(yintercept = mean(res_serie),color="red")
+```
+
+```{r,fig.height=7,fig.width=7}
+#ACF de la serie des residus
+acf=acf2(res_serie)
+```
+
+
+La série des résidus ne montre pas de tendance particulière. De plus, on remarque que la moyenne de la série est proche de zéro et que la série fluctue autour de cette valeur. On procède à un test de stationarité pour cette série en considérant la statistique pour un modèle sans tendance et de moyenne nulle.
+
+```{r}
+##Test AFD des residus de la serie mar
+lc.df1=ur.df(y=res_serie,lags=5,type="none")
+lc.df1@teststat%>% 
+  kable(.,caption="Test ADF (moyenne nulle")
+
+
+lc.df1@cval%>% 
+  kable(.,caption="Test ADF (moyenne nulle) pour les résidus de mar")
+
+```
+
+Le test rejette l'hypothèse nulle et on conclut que la série est stationnaire. L'ACF va aussi dans ce sens étant donné qu'elle décroit très rapidement. Ainsi, la part de marché semble être la somme d'une tendance déterministe et d'une erreur stationnaire.
+
+#Question 8
+
+Ensuite, on ajuste les résidus comme un ARMA.
+
+```{r}
+#ACF et PACF-Serie
+acf_ser=acf2y(y=res_serie)
+
+```
+
+Selon le graphique de l'ACF, les coefficients jusqu'au retard 5 sont en dehors de l'intervalle autour de zéro. Cependant, on remarque que certains coefficients au-delà du retard 20 sont en dehors de la zone autour de zéro. La PACF suggère un AR(1) pour la modélisation. D'autre part, la méthode MINIC suggère d'envisager un ARMA(1,1) ou ARMA(1,2). 
+
+```{r}
+##Methode MINIC
+armaselect(res_serie) %>% 
+  kable(.,caption="Methode MINIC pour la sélection du modèle ARMA")
+```
+
+```{r}
+##Comparaison des modeles ARMA
+
+#AR(1)
+res_ar1=Arima(res_serie, order=c(1,0,0))
+
+#ARMA(1,1)
+res_arma11=Arima(res_serie, order=c(1,0,1))
+
+#ARMA(1,2)
+res_arma12=Arima(res_serie, order=c(1,0,2))
+
+###Test de blancheur des residus
+blancheur=function(x,title){
+Box.test.2(residuals(x),nlag=c(5,10,15),type="Ljung-Box",decim=4) %>% 
+  kable(.,caption=title)
+}
+
+blancheur(res_ar1,"Test de LJung-Box - AR(1)")
+blancheur(res_arma11,"Test de LJung-Box - ARMA(1,1)")
+blancheur(res_arma12,"Test de LJung-Box - ARMA(1,2)")
+```
+
+Le test de Ljung-Box ne rejette pas l'hypothèse de blancheur des résidus pour tous les modèles.
+
+
+```{r}
+##Comparaison des modeles
+AIC=c(AIC(res_ar1),AIC(res_arma11),AIC(res_arma12))
+VAR=c(res_ar1$sigma2,res_arma11$sigma2,res_arma12$sigma2)
+comp=data.frame(AIC=AIC,Variance=VAR)
+rownames(comp)=c("AR(1)","ARMA(1,1)","ARMA(1,2)")
+
+comp %>%
+  kable(.,caption="Comparaison des modèles")
+```
+
+
+Le modèle ARMA(1,1) présente un AIC, la variance la plus faible et un faible nombre de paramètres. Ainsi, on retient ce modèle.
+
+#Question 9 et 10
+
+On ajuste un modèle avec tendance et une erreur stationnaire (ARMA(1,1)).
+
+```{r}
+###Estimation du modele avec erreur stationnaire et tendance deterministe
+model_trend=Arima(mar,order = c(1,0,1),include.drift=TRUE)
+
+##Verification de la blancheur des residus
+checkresiduals(model_trend,lag=5)
+
+```
+
+Le test de Ljung-Box ne rejette pas l'hypothèse de blancheur. On choisit de conserver ce modèle.
+
+```{r}
+##Modele obtenu
+summary(model_trend)
+```
+
+Le modèle que nous avons obtenu est un modèle avec tendance déterministe et erreur stationnaire de la forme suivante :
+
+$Y_{t}=3.20-0.03t+0.84Y_{t-1}-0.44Z_{t-1}+Z_t$
+
+
+
+#Question 11
+
+On considère d'ajuster un ARIMA(p,1,q) pour cette série. On regarde l'ACF et la PACF de la série différenciée.
+
+```{r}
+##Calcul de la serie differenciee
+diff_mar=diff(mar)
+
+#ACF et PACF-Serie
+acf_ser=acf2y(y=diff_mar)
+
+##Methode MINIC
+armaselect(diff_mar) %>% 
+  kable(.,caption="Methode MINIC pour la sélection du modèle ARMA")
+```
+
+Au vu de l'ACF et de la PACF, on envisage de modéliser un AR(6) ou un MA(6). Pour les modèles avec le plus petit nombre de paramètres, la méthode MINIC suggère de modéliser un ARMA(0,1), ARMA(0,2) ou un ARMA(1,1) pour la série différenciée. Ainsi, on teste les modèles suivants pour la série initialie: ARIMA(6,1,0), ARIMA(0,1,6), ARIMA(0,1,1), ARIMA(0,1,2), ARIMA(1,1,1).
+
+```{r}
+##Identification du modele
+ar_6=Arima(mar,order=c(6,1,0))
+ma_6=Arima(mar,order=c(0,1,6))
+arma_01=Arima(mar,order=c(0,1,1))
+arma_02=Arima(mar,order=c(0,1,2))
+arma_11=Arima(mar,order=c(1,1,1))
+
+###Test de blancheur des residus
+blancheur=function(x,title){
+Box.test.2(residuals(x),nlag=c(5,10,15),type="Ljung-Box",decim=4) %>% 
+  kable(.,caption=title)
+}
+
+blancheur(ar_6,"Test de LJung-Box - ARIMA(6,1,0)")
+blancheur(ma_6,"Test de LJung-Box - ARIMA(0,1,6)")
+blancheur(arma_01,"Test de LJung-Box - ARIMA(0,1,1)")
+blancheur(arma_02,"Test de LJung-Box - ARIMA(0,1,2)")
+blancheur(arma_11,"Test de LJung-Box - ARIMA(1,1,1)")
+```
+
+
+Pour tous les modèles, le test de blancheur (Ljung-Box) ne rejette pas l'hypothèse de blancheur.
+
+
+```{r}
+##Comparaison des modeles
+AIC=c(AIC(ar_6),AIC(ma_6),AIC(arma_01),AIC(arma_02),AIC(arma_11))
+VAR=c(ar_6$sigma2,ma_6$sigma2,arma_01$sigma2,arma_02$sigma2,arma_11$sigma2)
+comp=data.frame(AIC=AIC,Variance=VAR)
+rownames(comp)=c("ARIMA(6,1,0)","ARIMA(0,1,6)","ARIMA(0,1,1)",
+                 "ARIMA(0,1,2)","ARIMA(1,1,1)")
+
+comp %>%
+  kable(.,caption="Comparaison des modèles")
+
+ma_6=ar_6
+```
+
+On sélectionne le modèle ARIMA(6,1,0) car celui-ci présente les valeurs les plus faibles pour le critère AIC et la variance.
+
+```{r,fig.align="center",fig.height=5,fig.width=7}
+#Calcul des intervalles de confiance pour les valeurs ajustees
+upper_ajust_ma_6=fitted(ma_6)+qnorm(0.975)*sqrt(ma_6$sigma2)
+lower_ajust_ma_6=fitted(ma_6)-qnorm(0.975)*sqrt(ma_6$sigma2)
+upper_ajust_trend=fitted(model_trend)+qnorm(0.975)*sqrt(model_trend$sigma2)
+lower_ajust_trend=fitted(model_trend)-qnorm(0.975)*sqrt(model_trend$sigma2)
+
+#Estimation des valeurs
+fit_pred=data.frame(temps=seq(1:108),y_fit_ma_6=ma_6$fitted,
+                    y_fit_trend=model_trend$fitted,
+                    lower_ma_6=lower_ajust_ma_6,
+                    upper_ma_6=upper_ajust_ma_6,
+                    lower_trend=lower_ajust_trend,
+                    upper_trend=upper_ajust_trend)
+
+data_raw=mar[1:108] %>% 
+  as.data.frame() %>% 
+  rownames_to_column(.,var="temps") %>% 
+  set_colnames(.,c("temps","yobs")) %>% 
+  mutate(temps=seq(1,108,1))
+
+
+p=ggplot(data=data_raw,aes(x=temps))+
+  geom_line(aes(y=yobs,colour="Observation"))+
+  geom_point(aes(y=yobs),colour='red')+
+  geom_line(data=fit_pred,aes(x=temps,y=y_fit_ma_6,color="ARIMA(6,1,0)"))+
+    geom_line(data=fit_pred,aes(x=temps,y=y_fit_trend,color="Modèle avec tendance déterministe"))+
+  geom_ribbon(data=fit_pred,aes(x=temps,ymin=lower_ma_6,ymax=upper_ma_6,
+                                fill="ARIMA(6,1,0)"),
+              alpha=.2,colour=NA)+
+  geom_ribbon(data=fit_pred,aes(x=temps,ymin=lower_trend,ymax=upper_trend,
+                                fill="Modèle avec tendance déterministe"),
+              alpha=.2,colour=NA)+
+  ggtitle("Comparaison des estimations des deux modélisations")+
+  scale_colour_manual(name="Estimations",
+    values = c("Observation" = "red", "ARIMA(6,1,0)" = "orange",
+               "Modèle avec tendance déterministe" = "blue"))+
+  scale_fill_manual(name="IC",
+    values = c("ARIMA(6,1,0)" = "green",
+               "Modèle avec tendance déterministe" = "magenta"))+
+  theme(
+        panel.background = element_rect(fill = "grey98", colour = NA),
+        panel.border = element_blank(), 
+        panel.grid.major = element_line(colour = "white"))+
+  ylab(label="Part de marché")+
+  xlab(label="Temps")
+
+print(p)
+
+```
+
+La plupart des données observées sont incluses dans les intervalles de confiance des deux modèles. Dans l'ensemble, on remarque que les estimations et les intervalles de confiance sont très proches. Les modèles semblent donc équivalents sur la période d'observation.
+
+
