@@ -1,0 +1,166 @@
+---
+title: "Séries temporelles appliquées - Dossier 1"
+author: "Thomas Laurent"
+header-includes:
+- \usepackage[T1]{fontenc}
+- \usepackage{amsmath}
+output: 
+  pdf_document: 
+    keep_tex: yes
+    number_sections: true
+---
+
+```{r setup, include=FALSE,echo=FALSE}
+knitr::opts_chunk$set(echo=T, eval=T, message = F, warning=F, cache = F, fig=TRUE)
+
+setwd("/Users/thomaslaurent/Documents/Cours-M2/Series temporelles/")
+
+options(scipen=999)
+```
+
+```{r,echo=FALSE}
+##Packages
+#Package import
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(stringr)
+library(zoo)
+library(magrittr)
+library(knitr)
+```
+
+#Introduction
+
+Nous considérons une série mensuelle américaine correspondant aux U.S airline passenger-miles observées de janvier 1996 à juin 2005. On cherche à mettre en évidence des tendances moyennes et saisonnières de cette série.
+
+#Import des données
+Tout d'abord, on importe les données brutes.
+```{r}
+##Import des donnees
+data=read_csv("airmiles.csv")
+```
+
+#Conversion des données en série temporelle mensuelle
+
+Les données sont converties en série temporelle.
+```{r}
+#Conversion en series temporelles
+airmiles=ts(as.matrix(data),start=c(1996,1),frequency=12)
+```
+
+#Evaluation des tendances moyennes
+```{r,fig.height=5, fig.width=6}
+df_airmiles=as.data.frame(airmiles)
+
+#Statistiques descriptives
+summary=df_airmiles %>% 
+  summarise(moyenne=mean(airmiles),std=sd(airmiles),min=min(airmiles),
+            P25=quantile(airmiles,probs=c(0.25)),mediane=median(airmiles),
+            P75=quantile(airmiles,probs=c(0.75)),max=max(airmiles)) %>% 
+  tbl_df() %>% 
+  setNames(.,c("moyenne","écart-type",
+                            "minimum","25%","médiane","75%","maximum"))
+kable(summary,caption="Statistiques descriptives",
+      format.args = list(decimal.mark = ".", big.mark = ","))
+
+#Distribution - histogramme
+ggplot(df_airmiles,aes(x=airmiles))+
+  geom_histogram()+
+  ggtitle("Distribution de passenger-miles")+
+  scale_x_continuous(labels=scales::comma)
+  
+```
+
+```{r,fig.height=5, fig.width=5,fig.align="center"}
+#Distribution - boxplot
+ggplot(df_airmiles,aes(x="airmiles",y=airmiles))+
+  stat_boxplot(geom ='errorbar') +
+  geom_boxplot()+
+  ggtitle("Distribution de passenger-miles")+
+  scale_y_continuous(labels=scales::comma)+
+  xlab(label = "")
+```
+
+
+On observe que le nombre moyen de passenger-miles par mois est égal à 40,505,240 et est plutôt uniformément distribué d'après les graphiques. D'autre part, on ne remarque pas de valeurs atypiques.
+
+
+```{r}
+#Chronogramme de la serie
+autoplot(as.zoo(airmiles), geom = "line") + scale_x_yearmon()+
+  ylab("Nombre")+
+  xlab("Année-mois")+
+  scale_y_continuous(label=scales::comma)+
+  ggtitle("Chronogramme de la série passenger-miles")
+```
+
+
+Le nombre de passenger-miles semble en moyenne croître au cours du temps. On commence par régresser linéairement par rapport au temps. Ainsi, le modèle est le suivant :
+
+$$y_{t}=\beta_{0}+\beta_{1}x_{t}+u_{t}$$
+
+où les $x_{t}$ désigne le temps de la série.
+
+```{r,fig.align="center",fig.height=5,fig.width=7}
+temps=time(airmiles)
+reglin=lm(airmiles~temps)
+resi.mco=residuals(reglin)
+
+#Chonogramme de la serie
+op=par(cex.axis=0.5)
+plot.ts(airmiles,las=1,ylab="Nombre",xlab="Année-mois",cex.axis=0.7)
+title(main="Régression linéaire sur la série temporelle")
+abline(coef=coef(reglin),col="red",lty=2)
+par(op)
+```
+Le résultat de cette régression est en accord avec notre observation de départ puisque la tendance linéaire semble être croissante.
+
+On peut également s'intéresser aux résidus de cette série. Ainsi, on choisit de les réprésenter graphiquement.
+
+```{r,fig.align="center",fig.height=5,fig.width=7}
+#Graphe des residus de la regression lineaire
+data=data.frame(temps=as.vector(temps),residus=as.vector(resi.mco))
+ggplot(data,aes(x=temps,y=residus))+
+  geom_line()+
+  geom_hline(yintercept = 0)+
+  xlab(label="")+
+  ggtitle("Résidus du modèle linéaire")+
+scale_x_yearmon()
+```
+
+Les résidus semblent plutôt prendre des valeurs tantôt négatives et positives mais peuvent avoir le même signe sur plusieurs dates consécutives.
+
+Pour avoir une meilleure appréciation de la tendance moyenne, on choisit de désaisonnaliser la série temporelle.
+```{r,fig.height=8,fig.width=5,fig.align="center"}
+#Examen de la tendance
+decomp_airmiles=decompose(airmiles)
+plot(decomp_airmiles)
+
+```
+
+Le graphique de la tendance moyenne ("trend"), suggère que la tendance n'est pas croissante durant toute la période d'observation puisque l'on observe une légère décroissance en début de série et une forte décroissance entre 2001 et 2002 (plus précisément entre février 2001 et décembre 2002 comme indiqué dans le listing ci-dessous).
+
+```{r}
+cat("Extrait de la série temporelle entre 2001 et 2002")
+print(window(decomp_airmiles$trend,2001,2003))
+```
+
+#Evaluation de la saisonnalité
+
+Afin de détecter d'éventuelles autocorrélations suggérées par le profil des résidus de la régression linéaire de la série, on trace son lag plot.
+```{r,fig.align="center",fig.height=7,fig.width=7}
+lag.plot(rev(airmiles),12,layout=c(4,3),
+         do.lines=FALSE,diag.col="red",oma=c(1,1,1.5,1.5))
+```
+
+On détecte une autocorrélation positive d'ordre 1, 2 et 12. En particulier, l'autocorrélation d'ordre 12 est remarquable. Cela se traduit par une similarité du nombre de passenger-miles à un mois particulier d'une année sur l'autre.
+
+Enfin, on s'intéresse à la saisonnalité au sein de la série temporelle. Le décomposition de la série a permis de mettre en évidence un phénomène saisonnier. On caractérise la saisonnalité des données en traçant le month plot.
+
+```{r,fig.align="center",fig.height=5,fig.width=7}
+##Month plot de la serie temporelle
+monthplot(airmiles,ylab="Passenger-miles",main="Month plot",cex.main=1)
+```
+
+Globalement, on observe une forte variation intra-mois. Les moyennes des passenger-miles sur les mois de juillet et août sont bien plus élevées que celles observées sur le mois de janvier, février et septembre. En conclusion, sur la période printemps-été (de mars à août), le nombre de passenger-miles est en moyenne plus élevé que pendant les autres mois de l'année.
